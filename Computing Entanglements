@@ -1,0 +1,149 @@
+//////////////////////////////////////////////////////////////////////////////////
+
+def coprime_divisor_pairs(n):
+  """
+  Computes and returns all pairs of divisors of a number 'n' that are coprime.
+
+  Args:
+    n: An integer.
+
+  Returns:
+    A list of tuples, where each tuple contains a pair of coprime divisors of 'n'.
+    Returns an empty list if 'n' is not a positive integer.
+  """
+  divs = divisors(n) # Get divisors and sort them
+
+  coprime_pairs = []
+  for i in range(1, len(divs)): # Start the range at the first index to avoid 1 
+    for j in range(i, len(divs)): # Iterate only from i onwards to avoid duplicates
+      if gcd(divs[i], divs[j]) == 1:
+        coprime_pairs.append((divs[i], divs[j]))
+
+  return coprime_pairs
+
+//////////////////////////////////////////////////////////////////////////////////
+
+def reduce_subgroup_mod_c(subgroup, n, c):
+    """
+    Reduces a subgroup of GL(2, Z/nZ) modulo c, where c is a divisor of n.
+
+    Args:
+        subgroup: A list representing the subgroup of GL(2, Z/nZ). Each element
+                  in the list should be a 2x2 matrix over Z/nZ (or something
+                  that Sage can interpret as such).
+        n: The modulus of the original group GL(2, Z/nZ).
+        c: The modulus to reduce to (a divisor of n).
+
+    Returns:
+        A list representing the reduced subgroup of GL(2, Z/cZ).
+    """
+
+    if n % c != 0:
+        raise ValueError("c must be a divisor of n.")
+
+    Zn = IntegerModRing(n)
+    Zc = IntegerModRing(c)
+    GLc = GL(2, Zc) #Define general linear group GL(2, Z/cZ)
+
+    def reduce_mod_c(matrix_in_Zn):
+        """Reduces a 2x2 matrix over Z/nZ to a 2x2 matrix over Z/cZ."""
+        matrix_Zn = matrix(Zn, matrix_in_Zn.list()) #Ensure input is matrix over Zn
+        return GLc(matrix(Zc, [[matrix_Zn[i, j] % c for j in range(2)] for i in range(2)]))
+
+    reduced_subgroup = [reduce_mod_c(g) for g in subgroup]
+    return reduced_subgroup
+
+//////////////////////////////////////////////////////////////////////////////////
+
+def GL_mod_homomorphism(N, M):
+    """
+    Computes the kernel of the natural reduction homomorphism:
+    GL(2, Z/NZ) → GL(2, Z/MZ), reducing matrix entries modulo M.
+
+    Args:
+        N: The modulus for the domain group GL(2, Z/NZ).
+        M: The modulus for the codomain group GL(2, Z/MZ).
+
+    Returns:
+        A list of elements in the kernel of the homomorphism.
+    """
+    if N % M != 0:
+        raise ValueError("M must divide N for the reduction to be well-defined.")
+    
+    # Define the general linear groups
+    GLN = GL(2, IntegerModRing(N))
+    GLM = GL(2, IntegerModRing(M))
+
+    # Define the identity matrix in GL(2, Z/MZ)
+    I_M = GLM(matrix(IntegerModRing(M), [[1, 0], [0, 1]]))
+
+    # Define the homomorphism that reduces entries modulo M
+    def modM_homomorphism(MN):
+        MN_sage = matrix(IntegerModRing(N), MN.list())  
+        return GLM(matrix(IntegerModRing(M), [[MN_sage[i, j] % M for j in range(2)] for i in range(2)]))
+
+    # Compute the kernel: elements mapping to the identity matrix mod M
+    kernel = [MN for MN in GLN if modM_homomorphism(MN) == I_M]
+
+    return kernel
+
+//////////////////////////////////////////////////////////////////////////////////
+
+
+We now present the SageMath implementation for computing all $(a,b)$-horizontal entanglements of an elliptic curve such that $\gcd(a,b)=1$. This implementation utilizes the functions previously defined in this section and employs generators of the mod-$m_E$ Galois image, $\rho_{E,m_E}$, sourced from the LMFDB database.
+The methodology will be illustrated by presenting the specific code used to compute all horizontal entanglements for the elliptic curve with LMFDB label \texttt{300.b2}.
+
+n = 30
+G = GL(2, Integers(n))
+gens = [G([[21,16],[25,21]]), G([[1,0],[6,1]]), G([[25,6],[24,7]]), G([[5,6],[18,29]]), G([[2,5],[1,3]]), G([[1,6],[0,1]])]
+H = G.subgroup(gens)
+coprime_pairs = coprime_divisor_pairs(n)
+for pair in coprime_pairs:
+        a = pair[0]
+        b = pair[1]
+        c = lcm(a,b)
+        GLc = GL(2, Integers(c))
+        Gc = reduce_subgroup_mod_c(H, n, c)
+        ker_a = GL_mod_homomorphism(c, a)
+        ker_b = GL_mod_homomorphism(c, b)
+        Na = [x for x in ker_a if x in Gc]
+        Nb = [x for x in ker_b if x in Gc]
+        GroupGc = GLc.subgroup(Gc)
+        Nab = GLc.subgroup(Na+Nb)
+        if len(Nab) < len(GroupGc):
+          print(f"({a},{b})-entanglement with size {len(GroupGc)/len(Nab)}")
+
+
+In the preceding example, the elliptic curve has an adelic level of 30, which determined our choice of $n=30$. The specific generators for $\rho_{E,m_E}(G_\Q)$ used were obtained from the LMFDB data for that curve.
+To apply this code for computing horizontal entanglements of an arbitrary elliptic curve, two modifications are necessary:
+\begin{enumerate}
+    \item The variable \texttt{n} must be set to the adelic level of the desired elliptic curve.
+    \item The set of generators must be replaced with those corresponding to $\rho_{E,m_E}(G_\Q)$ for the target elliptic curve, typically also sourced from a database like LMFDB.
+\end{enumerate}
+A significant limitation, however, is the computational cost: as \texttt{n} (the adelic level) becomes very large, the execution time for these computations can increase substantially, potentially becoming prohibitively long.
+
+
+//////////////////////////////////////////////////////////////////////////////////
+
+For non-coprime pairs $(a,b)$, the implementation requires a modification from the coprime case presented above. The following example checks for $(14,21)$-entanglement for the elliptic curve with LMFDB label \texttt{2541.f1}.
+
+        a = 14
+        b = 21
+        c = lcm(a,b)
+        d = gcd(a,b)
+        G = GL(2, Integers(c))
+        gens = [G([[1,0],[6,1]]), G([[4,3],[9,7]]), G([[38,9],[1,22]]), G([[3,4],[8,11]]), G([[37,6],[36,7]]), G([[39,40],[32,35]]), G([[1,6],[0,1]]),  G([[31,6],[9,19]])]
+        Gc = G.subgroup(gens)
+        ker_a = GL_mod_homomorphism(c, a)
+        ker_b = GL_mod_homomorphism(c, b)
+        ker_d = GL_mod_homomorphism(c, d)
+        Na = [x for x in ker_a if x in Gc]
+        Nb = [x for x in ker_b if x in Gc]
+        Nd = [x for x in ker_d if x in Gc]
+        Nab = G.subgroup(Na+Nb)
+        if len(Nab) < len(Nd):
+          print(f"({a},{b})-entanglement with size {len(Nd)/len(Nab)}")
+
+In the preceding example, the specific generators for $\rho_{E,42}(G_\Q)$ used were obtained from the LMFDB data for that curve.
+
+
